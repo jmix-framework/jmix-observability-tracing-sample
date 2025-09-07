@@ -1,4 +1,4 @@
-rootProject.name = 'jmix-observability-logging-sample'
+rootProject.name = 'jmix-observability-tracing-sample'
 
 includeBuild 'jmix-petclinic-2'
 includeBuild 'jmix-petclinic-portal'

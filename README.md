@@ -1,12 +1,12 @@
-# Jmix Observability Logging Sample
+# Jmix Observability Tracing Sample
 
-This project is part of the **Jmix Observability Guide Series** and demonstrates how to integrate centralized logging across multiple Jmix applications.
+This project is part of the **Jmix Observability Guide Series** and demonstrates how to implement distributed tracing across multiple Jmix applications.
 
-The goal of the guide series is to showcase how Jmix applications can be monitored, traced, and analyzed using modern, open-source observability tooling. This includes the use of OpenTelemetry as the standard telemetry transport protocol and the Grafana stack (Grafana, Loki) as the target platform.
+The goal of the guide series is to showcase how Jmix applications can be monitored, traced, and analyzed using modern, open-source observability tooling. This includes the use of OpenTelemetry as the standard telemetry transport protocol and the Grafana stack (Grafana, Tempo) as the target platform.
 
-In this example, we use two Jmix applications – the Petclinic backend and the Petclinic Portal frontend – which interact with each other and produce structured log output. The log data is centrally collected using OpenTelemetry and visualized in Grafana.
+In this example, we use two Jmix applications – the Petclinic backend and the Petclinic Portal frontend – which interact with each other and generate distributed traces. The trace data is centrally collected using OpenTelemetry and visualized in Grafana for end-to-end request tracking across services.
 
-Learn more in the full guide: [Observability: Centralized Logging](https://docs.jmix.io/jmix/observability-logging-guide).
+Learn more in the full guide: [Observability: Distributed Tracing](https://docs.jmix.io/jmix/observability-tracing-guide).
 
 ---
 

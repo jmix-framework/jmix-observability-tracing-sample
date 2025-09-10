@@ -43,15 +43,35 @@ dependencies {
     implementation 'io.jmix.restds:jmix-restds-starter'
     // end::rest-ds-dependencies[]
 
-    // tag::actuator-logging-deps[]
-    // actuator includes also micrometer core & micrometer observation
+    // -----------------------------------------------------------
+    // ACTUATOR
+    // -----------------------------------------------------------
+    // Spring Boot Actuator provides built-in endpoints (e.g. /actuator/health,
+    // /actuator/metrics, etc.) for monitoring and management.
+    // --> includes also micrometer core & micrometer observation
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
-    // This appender sends log events to the OpenTelemetry Collector via OTLP.
-    implementation 'io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0:1.32.1-alpha'
-
-    // Required to export log records via the OTLP protocol to the OpenTelemetry Collector.
+    // tag::tracing-dependencies[]
+    // -----------------------------------------------------------
+    // DISTRIBUTED TRACING
+    // -----------------------------------------------------------
+    // Micrometer Tracing Bridge for OTEL:
+    // Bridges the Micrometer Tracing API to the OpenTelemetry protocol.
+    implementation 'io.micrometer:micrometer-tracing-bridge-otel'
+    
+    // OTLP Exporter:
+    // Exports trace data using the OTLP protocol to your OpenTelemetry Collector.
     implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
+    // end::tracing-dependencies[]
+
+    // tag::actuator-logging-deps[]
+    // -----------------------------------------------------------
+    // LOGGING EXPORT (LOGBACK)
+    // -----------------------------------------------------------
+    // OpenTelemetry Logback Appender:
+    // This appender sends log events (including MDC attributes such as trace_id, span_id, etc.)
+    // to the OpenTelemetry Collector.
+    implementation 'io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0:1.32.1-alpha'
     // end::actuator-logging-deps[]
 
     testImplementation('org.springframework.boot:spring-boot-starter-test') {

@@ -26,7 +26,10 @@ services:
       MAIN_DATASOURCE_URL: jdbc:postgresql://postgres:5432/petclinic
       MAIN_DATASOURCE_USERNAME: postgres
       MAIN_DATASOURCE_PASSWORD: postgres
+      # Logging export
       MANAGEMENT_OTLP_LOGGING_ENDPOINT: http://otel-collector:4318/v1/logs
+      # Tracing export
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
     ports:
       - "8080:8080"
 
@@ -46,7 +49,10 @@ services:
       PETCLINIC_BASEURL: http://petclinic:8080
       PETCLINIC_CLIENTID: petclinic-portal
       PETCLINIC_CLIENTSECRET: UYfIcnMhoL
+      # Logging export
       MANAGEMENT_OTLP_LOGGING_ENDPOINT: http://otel-collector:4318/v1/logs
+      # Tracing export
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
     ports:
       - "8081:8081"
 
@@ -54,7 +60,8 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.123.0
     ports:
-      - "4318:4318"
+      - "4317:4317"  # gRPC for traces
+      - "4318:4318"  # HTTP for logs and traces
     volumes:
       - ./otelcol-config.yaml:/config.yaml
     command:
@@ -72,6 +79,28 @@ services:
     volumes:
       - ./grafana-datasources.yaml:/etc/grafana/provisioning/datasources/grafana-datasources.yaml
     # end::loki[]
+
+  # tag::tempo[]
+  tempo:
+    image: grafana/tempo:2.7.1
+    ports:
+      - "3200:3200"
+      - "4417:4417"
+      - "4418:4418"
+      - "9096:9096"
+    volumes:
+      - ./tempo-config.yaml:/config.yaml
+    command:
+      - --config.file=/config.yaml
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q --spider http://localhost:3200/ready" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+  # end::tempo[]
 
 networks:
   default:

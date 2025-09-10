@@ -41,7 +41,11 @@ The final application includes:
 
 Before diving into the technical setup, let's look at what distributed tracing is and why it becomes essential when working with multiple applications.
 
-Distributed tracing is the ability to track a single request as it travels through multiple services, creating a complete picture of how different parts of your system interact to fulfill that request.
+In the previous xref:observability-logging-guide:index.adoc[Centralized Logging Guide], we established the foundation for observability by bringing logs from multiple services into a single interface. Centralized logging was our first step toward understanding distributed systems - instead of searching through separate log files on different servers, we could view all logs in Grafana and even correlate them temporally to understand what was happening across services at a specific moment in time.
+
+However, as systems grow and handle more concurrent requests, centralized logging alone reaches its limits. While we can see logs from different services in one place and correlate them by timestamp, this temporal correlation becomes increasingly difficult with higher load. When dozens or hundreds of requests are processed simultaneously, determining which log entries belong to the same user request becomes nearly impossible. Furthermore, centralized logging lacks causal correlation - there's no automatic way to understand the cause-and-effect relationships between events across services.
+
+Distributed tracing addresses these limitations by adding a crucial capability: the ability to track a single request as it travels through multiple services, creating a complete picture of how different parts of your system interact to fulfill that request. While centralized logging gives us visibility into what's happening across services, distributed tracing adds the context of *why* and *how* these events are related.
 
 Consider what happens when a pet owner logs into the Petclinic Portal and views their list of pets. This seemingly simple action actually involves multiple steps across different applications:
 
@@ -56,21 +60,46 @@ With traditional logging, each application would record its own activities indep
 
 Distributed tracing solves this by creating a *trace* - a collection of related *spans* that represent the work done by each service for a single request. Each span contains timing information, operation details, and a unique identifier that links it to other spans in the same trace.
 
-Think of logs as individual photographs that capture moments in time, while traces are like a video that shows the complete journey of a request through your system.
+Think of it this way: logs are like individual photographs that capture moments in time across different locations, while traces are like a video that shows the complete journey of a request through your system, revealing the connections between those moments.
 
-This approach provides several key benefits:
+By building distributed tracing on top of our centralized logging foundation, we gain several key benefits:
 
 * **Request Flow Visibility**: See exactly how a request moves through your system and where time is spent
 * **Performance Analysis**: Identify bottlenecks by examining which operations take the longest
 * **Error Correlation**: When something goes wrong, trace the exact path that led to the error
 * **Service Dependencies**: Understand how your services interact and depend on each other
+* **Causal Relationships**: Unlike temporal correlation in centralized logging, traces reveal the actual cause-and-effect chain between events
 
-In distributed systems, this visibility becomes critical for understanding system behavior, diagnosing issues, and optimizing performance across service boundaries.
+In distributed systems, this enhanced visibility becomes critical for understanding system behavior, diagnosing issues, and optimizing performance across service boundaries. Distributed tracing complements centralized logging by adding the missing piece: automatic correlation of related events across services, even under high load with many parallel requests.
+
+[[spring-boot-actuator-and-micrometer]]
+== Spring Boot Actuator and Micrometer Tracing
+
+Before configuring the specific tracing dependencies, it's important to understand the foundation that Jmix and Spring Boot already provide for observability.
+
+As described in the xref:observability-logging-guide:index.adoc#spring-boot-actuator[Centralized Logging Guide], Spring Boot Actuator serves as the main way to expose operational data from applications. While Actuator itself is not included by default in Jmix applications, the underlying Micrometer dependencies are already present through Spring Boot.
+
+With Spring Boot 3, Micrometer has evolved beyond just metrics collection to provide a comprehensive observability facade that includes:
+
+* **Micrometer Observation API**: A unified API for instrumenting code once and getting both metrics and traces
+* **Micrometer Tracing**: A vendor-neutral tracing facade that works with different implementations (OpenTelemetry, Brave/Zipkin, AWS X-Ray)
+
+This means Jmix applications already have the foundation for distributed tracing built in through these Micrometer dependencies. When we add `spring-boot-starter-actuator` and `micrometer-tracing-bridge-otel` in the next sections, we're:
+
+1. Enabling Actuator to expose the observability features
+2. Telling Micrometer to use OpenTelemetry as its tracing implementation
+
+The bridge translates Micrometer's observations into OpenTelemetry spans, providing automatic instrumentation for HTTP requests, database calls, and other operations without requiring any code changes.
+
+[NOTE]
+====
+Because Jmix includes Micrometer through Spring Boot, the foundation for distributed tracing is already present. This makes enabling tracing primarily a matter of adding Actuator and configuring which tracing backend to use.
+====
 
 [[setting-up-distributed-tracing]]
 == Setting Up Distributed Tracing
 
-Now that we understand what distributed tracing provides, let's enhance our existing observability infrastructure to support trace collection and visualization.
+Now that we understand what distributed tracing provides and the foundation that Jmix already includes, let's enhance our existing observability infrastructure to support trace collection and visualization.
 
 We will build upon the OpenTelemetry Collector and Grafana setup from the centralized logging guide, adding Grafana Tempo as our trace storage backend and configuring our applications to export traces.
 
@@ -115,71 +144,103 @@ The key additions for tracing are:
 [[grafana-data-source]]
 === Configuring Grafana Data Source
 
-We need to add Tempo as a data source in Grafana so we can visualize and query traces alongside our existing logs.
+We need to add Tempo as a data source in Grafana so we can visualize and query traces alongside our existing logs. Additionally, we configure the integration between Loki and Tempo to enable seamless navigation between logs and traces.
 
-.grafana-datasources.yaml - Complete configuration with Tempo
+.grafana-datasources.yaml - Complete configuration with Tempo and cross-correlation
 [source,yaml,indent=0]
 ----
-include::example$/docker/grafana-datasources.yaml[tags=start;loki-only;tempo-only;end]
+include::example$/docker/grafana-datasources.yaml[tags=start;loki-only;loki-with-traces;tempo-only;tempo-with-logs;end]
 ----
 
-This configuration automatically connects Grafana to both Loki (for logs) and Tempo (for traces), giving us a unified interface for all observability data.
+This enhanced configuration provides:
+
+* **Loki configuration**: Extracts trace IDs from structured logs using a regex pattern and creates clickable links to view the corresponding trace in Tempo
+* **Tempo configuration**: Enables navigation from traces back to related logs in Loki, filtered by trace ID and service name
+* **Bidirectional correlation**: Users can jump from a log entry to its trace, or from a trace span to all related logs
+
+With this setup, Grafana becomes a unified interface where logs and traces are seamlessly connected, making it easy to investigate issues by moving between different telemetry types.
 
 [[enabling-tracing-backend]]
 === Enabling Tracing in Petclinic Backend
 
 Now we configure the Petclinic Backend application to export traces to our OpenTelemetry Collector. This requires adding tracing dependencies and configuring the OTLP exporter.
 
-First, add the required dependencies to the Backend's `build.gradle`:
+First, add the required dependencies to the Backend's `build.gradle`. The dependencies are organized in clear sections for better maintainability:
 
-.build.gradle
+.build.gradle - Tracing dependencies
 [source,groovy,indent=0]
 ----
-include::example$/petclinic/build.gradle[tags=tracing-dependencies]
+include::example$petclinic/build.gradle[tags=tracing-dependencies]
 ----
 
 These dependencies provide:
 
-* **spring-boot-starter-actuator**: Enables Spring Boot's observability features including automatic tracing instrumentation
-* **micrometer-tracing-bridge-otel**: Bridges Spring Boot's Micrometer observations to OpenTelemetry traces
-* **opentelemetry-exporter-otlp**: Exports traces to our OpenTelemetry Collector via OTLP protocol
+* **micrometer-tracing-bridge-otel**: Bridges Spring Boot's Micrometer Tracing API to the OpenTelemetry protocol, enabling automatic instrumentation of HTTP requests, database calls, and other operations
+* **opentelemetry-exporter-otlp**: Exports trace data using the OTLP protocol to our OpenTelemetry Collector
 
-Next, configure the OTLP endpoint and service identification in `application.properties`:
+[NOTE]
+====
+The `spring-boot-starter-actuator` dependency, which includes Micrometer core and observation capabilities, is already present in the dependencies section above the tracing configuration.
+====
 
-.application.properties
+Next, configure the tracing export settings in `application.properties`:
+
+.application.properties - Tracing configuration
 [source,properties,indent=0]
 ----
-include::example$/petclinic/src/main/resources/application.properties[tags=tracing-config]
+include::example$petclinic/src/main/resources/application.properties[tags=tracing-config]
 ----
 
 Key configuration elements:
 
-* **Service name**: Identifies this application as `petclinic-backend` in traces
-* **OTLP endpoint**: Points to our OpenTelemetry Collector running on port `4318`
-* **Sampling probability**: Set to `1.0` (100%) for development to capture all traces
+* **Sampling probability**: Set to `1.0` (100%) for development environments to capture all traces. In production, you might reduce this to `0.1` (10%) to balance visibility with performance
+* **OTLP tracing export**: Enables trace export via HTTP to the OpenTelemetry Collector
+* **Service name**: Automatically derived from `spring.application.name` (`jmix-petclinic`) to identify this service in traces
 
 [[enabling-tracing-portal]]
 === Enabling Tracing in Petclinic Portal
 
 The Portal application requires the same tracing configuration to participate in distributed traces and track requests from the frontend perspective.
 
-Add tracing dependencies to the Portal's `build.gradle`:
+Add the tracing dependencies to the Portal's `build.gradle`, following the same structured approach:
 
-.build.gradle
+.build.gradle - Tracing dependencies
 [source,groovy,indent=0]
 ----
-include::example$/portal/build.gradle[tags=tracing-dependencies]
+include::example$portal/build.gradle[tags=tracing-dependencies]
 ----
 
-Configure the Portal's OTLP export settings:
+The dependencies serve the same purpose as in the Backend:
+* Bridging Micrometer observations to OpenTelemetry traces
+* Exporting traces via OTLP to the collector
 
-.application.properties
+Configure the Portal's tracing export settings in `application.properties`:
+
+.application.properties - Tracing configuration
 [source,properties,indent=0]
 ----
-include::example$/portal/src/main/resources/application.properties[tags=tracing-config]
+include::example$portal/src/main/resources/application.properties[tags=tracing-config]
 ----
 
-The Portal uses `petclinic-portal` as its service name to distinguish it from the Backend in trace visualizations.
+The Portal uses `jmix-petclinic-portal` as its service name (from `spring.application.name`) to distinguish it from the Backend in trace visualizations. This separation allows us to clearly see how requests flow from the Portal through to the Backend services.
+
+[[docker-environment-configuration]]
+=== Configuring the Docker Environment
+
+When running the applications in Docker containers, the tracing endpoints need to be configured to point to the internal Docker network addresses. The `docker-compose.yaml` file includes environment variables that override the local development settings:
+
+.docker-compose.yaml - Environment variables for tracing
+[source,yaml,indent=0]
+----
+environment:
+  # ... other environment variables ...
+  # Logging export
+  MANAGEMENT_OTLP_LOGGING_ENDPOINT: http://otel-collector:4318/v1/logs
+  # Tracing export
+  MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+----
+
+These environment variables override the `application.properties` settings when running in Docker, ensuring that the applications can reach the OpenTelemetry Collector using the internal Docker network hostname (`otel-collector`) instead of `localhost`.
 
 [[verifying-setup]]
 === Verifying the Tracing Setup
@@ -193,7 +254,7 @@ With all components configured, let's verify that our distributed tracing setup 
 docker-compose -f docker/docker-compose.yaml up -d
 ----
 
-. Start both the Petclinic Backend and Portal applications
+. Start both the Petclinic Backend and Portal applications (either locally or via Docker)
 
 . Open Grafana at http://localhost:3000 (username: `admin`, password: `admin`)
 

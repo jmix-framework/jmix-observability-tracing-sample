@@ -61,18 +61,26 @@ dependencies {
     // --> includes also micrometer core & micrometer observation
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
+    // tag::tracing-dependencies[]
     // -----------------------------------------------------------
-    // LOGGING EXPORT (LOGBACK + OTEL EXPORT)
+    // DISTRIBUTED TRACING
     // -----------------------------------------------------------
+    // Micrometer Tracing Bridge for OTEL:
+    // Bridges the Micrometer Tracing API to the OpenTelemetry protocol.
+    implementation 'io.micrometer:micrometer-tracing-bridge-otel'
+    
+    // OTLP Exporter:
+    // Exports trace data using the OTLP protocol to your OpenTelemetry Collector.
+    implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
+    // end::tracing-dependencies[]
 
+    // -----------------------------------------------------------
+    // LOGGING EXPORT (LOGBACK)
+    // -----------------------------------------------------------
     // OpenTelemetry Logback Appender:
     // This appender sends log events (including MDC attributes such as trace_id, span_id, etc.)
-    // to the OpenTelemetry Collector via OTLP.
+    // to the OpenTelemetry Collector.
     implementation 'io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0:1.32.1-alpha'
-
-    // OTLP Exporter:
-    // Required to export log records via the OTLP protocol to the OpenTelemetry Collector.
-    implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
 
 
     testImplementation('org.springframework.boot:spring-boot-starter-test') {

@@ -142,21 +142,26 @@ The key additions for tracing are:
 * **Updated service pipeline** that routes traces from receivers through processors to the Tempo exporter
 
 [[grafana-data-source]]
-=== Configuring Grafana Data Source
+=== Configuring Grafana Data Sources
 
-We need to add Tempo as a data source in Grafana so we can visualize and query traces alongside our existing logs. Additionally, we configure the integration between Loki and Tempo to enable seamless navigation between logs and traces.
+We need to configure Grafana with both Loki and Tempo as data sources, and enable the bidirectional integration between them for seamless navigation between logs and traces.
 
-.grafana-datasources.yaml - Complete configuration with Tempo and cross-correlation
+.grafana-datasources.yaml - Complete configuration with bidirectional log-trace correlation
 [source,yaml,indent=0]
 ----
-include::example$/docker/grafana-datasources.yaml[tags=start;loki-only;loki-with-traces;tempo-only;tempo-with-logs;end]
+include::example$/docker/grafana-datasources.yaml[tags=start;loki-with-traces;tempo-with-logs]
 ----
 
-This enhanced configuration provides:
+This configuration provides:
 
-* **Loki configuration**: Extracts trace IDs from structured logs using a regex pattern and creates clickable links to view the corresponding trace in Tempo
-* **Tempo configuration**: Enables navigation from traces back to related logs in Loki, filtered by trace ID and service name
-* **Bidirectional correlation**: Users can jump from a log entry to its trace, or from a trace span to all related logs
+* **Loki with trace correlation**: Extracts trace IDs from structured logs using a regex pattern and creates clickable links to view the corresponding trace in Tempo
+* **Tempo with log correlation**: Enables navigation from traces back to related logs in Loki, filtered by trace ID and service name
+
+The key integration features:
+
+* **Derived fields in Loki**: The `matcherRegex` pattern `"traceid":"(\w+)"` extracts trace IDs from JSON-formatted logs and creates clickable links
+* **Traces to logs in Tempo**: Maps the `service.name` from traces to the `job` label in Loki for proper filtering
+* **Bidirectional navigation**: Users can jump from a log entry to its trace, or from a trace span to all related logs
 
 With this setup, Grafana becomes a unified interface where logs and traces are seamlessly connected, making it easy to investigate issues by moving between different telemetry types.
 

@@ -15,8 +15,6 @@ processors:
 
 # tag::exporters-with-traces[]
 exporters:
-  debug:
-    verbosity: detailed
   loki:
     endpoint: "http://loki:3100/loki/api/v1/push"
   otlphttp:
@@ -33,5 +31,5 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp, debug]
+      exporters: [otlphttp]
 # end::service-with-traces[]

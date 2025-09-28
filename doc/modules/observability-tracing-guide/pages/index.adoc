@@ -137,9 +137,9 @@ include::example$/docker/otelcol-config.yaml[tags=receivers-with-traces;processo
 
 The key additions for tracing are:
 
-* OTLP receiver on port `4317` for gRPC-based trace data (in addition to the existing HTTP receiver on `4318`)
-* OTLP exporter that forwards traces to Tempo running on port `3200`
-* Updated service pipeline that routes traces from receivers through processors to the Tempo exporter
+* OTLP receiver on port `4318` for trace data.
+* OTLP exporter that forwards traces to Tempo running on port `3200`.
+* Updated service pipeline that routes traces from receivers through processors to the Tempo exporter.
 
 [[grafana-data-source]]
 === Configuring Grafana Data Sources
@@ -170,7 +170,7 @@ With this setup, Grafana becomes a unified interface where logs and traces are s
 
 Now we configure the Petclinic Backend application to export traces to our OpenTelemetry Collector. This requires adding tracing dependencies and configuring the OTLP exporter.
 
-First, add the required dependencies to the Backend's `build.gradle`. The dependencies are organized in clear sections for better maintainability:
+First, add the required dependencies to the Backend's `build.gradle`:
 
 .build.gradle - Tracing dependencies
 [source,groovy,indent=0]
@@ -201,22 +201,24 @@ Key configuration elements:
 * **Sampling probability**: Set to `1.0` (100%) for development environments to capture all traces. In production, you might reduce this to `0.1` (10%) to balance visibility with performance
 * **OTLP tracing export**: Enables trace export via HTTP to the OpenTelemetry Collector
 
+
+[NOTE]
+====
+We set the value `management.otlp.tracing.endpoint` is used for local development. In the docker environment we will override this value to point to the HTTP address of the OTEL Collector.
+====
+
 [[enabling-tracing-portal]]
 === Enabling Tracing in Petclinic Portal
 
 The Portal application requires the same tracing configuration to participate in distributed traces and track requests from the frontend perspective.
 
-Add the tracing dependencies to the Portal's `build.gradle`, following the same structured approach:
+Add the tracing dependencies to the Portal's `build.gradle`:
 
 .build.gradle - Tracing dependencies
 [source,groovy,indent=0]
 ----
 include::example$portal/build.gradle[tags=tracing-dependencies]
 ----
-
-The dependencies serve the same purpose as in the Backend:
-* Bridging Micrometer observations to OpenTelemetry traces
-* Exporting traces via OTLP to the collector
 
 Configure the Portal's tracing export settings in `application.properties`:
 
@@ -225,8 +227,6 @@ Configure the Portal's tracing export settings in `application.properties`:
 ----
 include::example$portal/src/main/resources/application.properties[tags=tracing-config]
 ----
-
-The Portal uses `jmix-petclinic-portal` as its service name (from `spring.application.name`) to distinguish it from the Backend in trace visualizations. This separation allows us to clearly see how requests flow from the Portal through to the Backend services.
 
 [[docker-environment-configuration]]
 === Configuring the Docker Environment
@@ -295,16 +295,14 @@ Without trace propagation through HTTP headers, each service would generate isol
 [[logs-with-trace-context]]
 === Logs with Trace Context
 
-In Grafana's Explore view, filter for logs from the `jmix-petclinic-portal` service to see what happens when loading visits:
+In Grafana's Drilldown > Logs view, filter for logs from the `jmix-petclinic-portal` service to see what happens when loading visits:
 
 .Grafana Logs - Portal loading visits
-image::grafana-logs-loading-visits.png[Grafana Logs showing Portal loading visits, link="_images/grafana-logs-loading-visits.png"]
+image::grafana-logs-with-trace-ids.png[Grafana Logs showing Portal loading visits, link="_images/grafana-logs-with-trace-ids.png]
 
-The log entry "Loading visits for owner" now includes trace context:
-- **trace_id**: Unique identifier for the entire distributed transaction
-- **span_id**: Identifier for this specific operation within the trace
+The first log entry in the Table "Loading visits for owner" now includes the `trace_id` as the unique identifier for the interaction. You can already see that the second log message that comes from the UI Controller contains the same `trace_id` value as it originated from the same UI interaction. This shows, that the trace identifier is used across multiple parts in the application that are triggered by one UI interaction.
 
-The blue trace icon next to the trace_id links directly to the full distributed trace.
+But how can we now see also logs from multiple services that belong to the same trace? This we will see in the next section.
 
 [[from-logs-to-traces]]
 === From Logs to Traces
@@ -312,18 +310,18 @@ The blue trace icon next to the trace_id links directly to the full distributed 
 Clicking the trace link opens the complete distributed trace in Tempo:
 
 .Grafana Tempo - Distributed Trace View
-image::tempo-trace-detail.png[Tempo showing the complete distributed trace, link="_images/tempo-trace-detail.png"]
+image::grafana-trace-details.png[Tempo showing the complete distributed trace, link="_images/grafana-trace-details.png"]
 
-The trace view shows the complete request flow across both services.
+The trace view shows the complete request flow across both services. It includes the `jmix-petclinic-portal` as well as the `jmix-petclinic` as the backend.
 
-The Portal spans capture the initial request handling in the Portal application, including REST DataStore preparation and HTTP client configuration. The Backend spans show the operations in the Backend service - REST API endpoint handling (`/rest/entities/Visit`), service layer processing, database query execution, and response serialization.
+The different entries in the tree structure on the left represent the different spans that are part of the trace. The span with the name `http post` represents the HTTP Client interaction on the portal side. Additional information (span attributes), like the requested URL, the HTTP method etc. are stored there and can be viewed by clicking on the span name.
 
-Each span displays timing information: its start time relative to trace beginning, duration, and whether operations run sequentially or in parallel. The trace confirms that the Portal's request triggered Backend processing, with both services participating in the same distributed trace.
+Additionally, each span displays timing information: its start time relative to trace beginning, duration, and whether operations run sequentially or in parallel. The trace confirms that the Portal's request triggered Backend processing, with both services participating in the same distributed trace.
 
 [[understanding-trace-details]]
 === Understanding the Trace Details
 
-Spring Boot with Micrometer creates spans for all major operations without requiring tracing code in business logic. This includes incoming HTTP requests to both Portal and Backend, outgoing REST API calls from Portal to Backend, JPA and Hibernate database queries, and Spring service method execution.
+Spring Boot with Micrometer creates spans for all major operations without requiring tracing code in business logic. This includes incoming HTTP requests to both Portal and Backend, outgoing REST API calls from Portal to Backend.
 
 Each span in the trace provides timing information that helps identify performance bottlenecks. When errors occur, the trace shows exactly where in the request flow they happened. The visual representation makes service dependencies clear, and the timing breakdown separates network latency from actual processing time.
 

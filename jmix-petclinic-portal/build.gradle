@@ -1,5 +1,5 @@
 plugins {
-    id 'io.jmix' version '2.8.1'
+    id 'io.jmix' version '3.0.0-M5'
     id 'java'
     id 'org.jetbrains.gradle.plugin.idea-ext' version '1.1.9'
 }
@@ -8,7 +8,7 @@ apply plugin: 'org.springframework.boot'
 apply plugin: 'com.vaadin'
 
 jmix {
-    bomVersion = '2.8.1'
+    bomVersion = '3.0.999-SNAPSHOT'
 }
 
 group = 'io.jmix.petclinic'
@@ -17,7 +17,7 @@ version = '0.0.1-SNAPSHOT'
 repositories {
     mavenCentral()
     maven {
-        url 'https://global.repo.jmix.io/repository/public'
+        url = 'https://nexus.jmix.io/repository/public'
     }
 }
 
@@ -55,13 +55,8 @@ dependencies {
     // -----------------------------------------------------------
     // DISTRIBUTED TRACING
     // -----------------------------------------------------------
-    // Micrometer Tracing Bridge for OTEL:
-    // Bridges the Micrometer Tracing API to the OpenTelemetry protocol.
-    implementation 'io.micrometer:micrometer-tracing-bridge-otel'
-    
-    // OTLP Exporter:
-    // Exports trace data using the OTLP protocol to your OpenTelemetry Collector.
-    implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
+    // Provides Micrometer Tracing, the OpenTelemetry bridge, and OTLP export.
+    implementation 'org.springframework.boot:spring-boot-starter-opentelemetry'
     // end::tracing-dependencies[]
 
     // tag::actuator-logging-deps[]
@@ -79,6 +74,8 @@ dependencies {
     }
     testImplementation 'io.jmix.flowui:jmix-flowui-test-assist'
     implementation 'org.postgresql:postgresql'
+    implementation 'com.vaadin:vaadin-dev'
+    testImplementation 'org.springframework.boot:spring-boot-jdbc-test'
 }
 
 configurations.implementation {
@@ -99,4 +96,5 @@ idea {
 
 vaadin {
     optimizeBundle = false
+    productionMode = false
 }

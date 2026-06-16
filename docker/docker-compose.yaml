@@ -27,9 +27,9 @@ services:
       MAIN_DATASOURCE_USERNAME: postgres
       MAIN_DATASOURCE_PASSWORD: postgres
       # Logging export
-      MANAGEMENT_OTLP_LOGGING_ENDPOINT: http://otel-collector:4318/v1/logs
+      MANAGEMENT_OPENTELEMETRY_LOGGING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/logs
       # Tracing export
-      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+      MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
     ports:
       - "8080:8080"
 
@@ -50,9 +50,9 @@ services:
       PETCLINIC_CLIENTID: petclinic-portal
       PETCLINIC_CLIENTSECRET: UYfIcnMhoL
       # Logging export
-      MANAGEMENT_OTLP_LOGGING_ENDPOINT: http://otel-collector:4318/v1/logs
+      MANAGEMENT_OPENTELEMETRY_LOGGING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/logs
       # Tracing export
-      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+      MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
     ports:
       - "8081:8081"
 

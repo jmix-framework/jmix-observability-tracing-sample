@@ -51,4 +51,15 @@ public class JmixPetclinicSecurityConfiguration {
         return http.build();
     }
 
+    @Bean
+    @Order(JmixSecurityFilterChainOrder.CUSTOM + 1)
+    SecurityFilterChain autentificatedFilterChain(HttpSecurity http) throws Exception {
+        http.securityMatcher("/images/**")
+                .authorizeHttpRequests(authorize ->
+                        authorize.anyRequest().authenticated()
+                );
+
+        return http.build();
+    }
+
 }

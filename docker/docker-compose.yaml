@@ -14,47 +14,47 @@ services:
     ports:
       - "5432:5432"
 
-  petclinic:
-    # you can use profiles to start applications separately from the infrastructure
-    # profiles: [app]
-    build:
-      context: ../jmix-petclinic-2
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      MAIN_DATASOURCE_URL: jdbc:postgresql://postgres:5432/petclinic
-      MAIN_DATASOURCE_USERNAME: postgres
-      MAIN_DATASOURCE_PASSWORD: postgres
-      # Logging export
-      MANAGEMENT_OPENTELEMETRY_LOGGING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/logs
-      # Tracing export
-      MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
-    ports:
-      - "8080:8080"
-
-  petclinic-portal:
-    # you can use profiles to start applications separately from the infrastructure
-    # profiles: [app]
-    build:
-      context: ../jmix-petclinic-portal
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      MAIN_DATASOURCE_URL: jdbc:postgresql://postgres:5432/portal
-      MAIN_DATASOURCE_USERNAME: postgres
-      MAIN_DATASOURCE_PASSWORD: postgres
-
-      PETCLINIC_BASEURL: http://petclinic:8080
-      PETCLINIC_CLIENTID: petclinic-portal
-      PETCLINIC_CLIENTSECRET: UYfIcnMhoL
-      # Logging export
-      MANAGEMENT_OPENTELEMETRY_LOGGING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/logs
-      # Tracing export
-      MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
-    ports:
-      - "8081:8081"
+#  petclinic:
+#    # you can use profiles to start applications separately from the infrastructure
+#    # profiles: [app]
+#    build:
+#      context: ../jmix-petclinic-2
+#    depends_on:
+#      postgres:
+#        condition: service_healthy
+#    environment:
+#      MAIN_DATASOURCE_URL: jdbc:postgresql://postgres:5432/petclinic
+#      MAIN_DATASOURCE_USERNAME: postgres
+#      MAIN_DATASOURCE_PASSWORD: postgres
+#      # Logging export
+#      MANAGEMENT_OPENTELEMETRY_LOGGING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/logs
+#      # Tracing export
+#      MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+#    ports:
+#      - "8080:8080"
+#
+#  petclinic-portal:
+#    # you can use profiles to start applications separately from the infrastructure
+#    # profiles: [app]
+#    build:
+#      context: ../jmix-petclinic-portal
+#    depends_on:
+#      postgres:
+#        condition: service_healthy
+#    environment:
+#      MAIN_DATASOURCE_URL: jdbc:postgresql://postgres:5432/portal
+#      MAIN_DATASOURCE_USERNAME: postgres
+#      MAIN_DATASOURCE_PASSWORD: postgres
+#
+#      PETCLINIC_BASEURL: http://petclinic:8080
+#      PETCLINIC_CLIENTID: petclinic-portal
+#      PETCLINIC_CLIENTSECRET: UYfIcnMhoL
+#      # Logging export
+#      MANAGEMENT_OPENTELEMETRY_LOGGING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/logs
+#      # Tracing export
+#      MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+#    ports:
+#      - "8081:8081"
 
   # tag::otel-collector[]
   otel-collector:
@@ -92,8 +92,6 @@ services:
       - ./tempo-config.yaml:/config.yaml
     command:
       - --config.file=/config.yaml
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     healthcheck:
       test: [ "CMD-SHELL", "wget -q --spider http://localhost:3200/ready" ]
       interval: 10s

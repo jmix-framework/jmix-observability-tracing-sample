@@ -1,3 +1,5 @@
+name: jmix-observability-tracing
+
 services:
 
   postgres:
@@ -14,92 +16,60 @@ services:
     ports:
       - "5432:5432"
 
-#  petclinic:
-#    # you can use profiles to start applications separately from the infrastructure
-#    # profiles: [app]
-#    build:
-#      context: ../jmix-petclinic-2
-#    depends_on:
-#      postgres:
-#        condition: service_healthy
-#    environment:
-#      MAIN_DATASOURCE_URL: jdbc:postgresql://postgres:5432/petclinic
-#      MAIN_DATASOURCE_USERNAME: postgres
-#      MAIN_DATASOURCE_PASSWORD: postgres
-#      # Logging export
-#      MANAGEMENT_OPENTELEMETRY_LOGGING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/logs
-#      # Tracing export
-#      MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
-#    ports:
-#      - "8080:8080"
-#
-#  petclinic-portal:
-#    # you can use profiles to start applications separately from the infrastructure
-#    # profiles: [app]
-#    build:
-#      context: ../jmix-petclinic-portal
-#    depends_on:
-#      postgres:
-#        condition: service_healthy
-#    environment:
-#      MAIN_DATASOURCE_URL: jdbc:postgresql://postgres:5432/portal
-#      MAIN_DATASOURCE_USERNAME: postgres
-#      MAIN_DATASOURCE_PASSWORD: postgres
-#
-#      PETCLINIC_BASEURL: http://petclinic:8080
-#      PETCLINIC_CLIENTID: petclinic-portal
-#      PETCLINIC_CLIENTSECRET: UYfIcnMhoL
-#      # Logging export
-#      MANAGEMENT_OPENTELEMETRY_LOGGING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/logs
-#      # Tracing export
-#      MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
-#    ports:
-#      - "8081:8081"
-
-  # tag::otel-collector[]
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.123.0
+  petclinic:
+    profiles: [app]
+    build:
+      context: ../jmix-petclinic-2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lgtm:
+        condition: service_started
+    environment:
+      MAIN_DATASOURCE_URL: jdbc:postgresql://postgres:5432/petclinic
+      MAIN_DATASOURCE_USERNAME: postgres
+      MAIN_DATASOURCE_PASSWORD: postgres
+      # tag::otel-environment[]
+      MANAGEMENT_OPENTELEMETRY_LOGGING_EXPORT_OTLP_ENDPOINT: http://lgtm:4318/v1/logs
+      MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: http://lgtm:4318/v1/traces
+      MANAGEMENT_OTLP_METRICS_EXPORT_URL: http://lgtm:4318/v1/metrics
+      # end::otel-environment[]
     ports:
-      - "4317:4317"  # gRPC for traces
-      - "4318:4318"  # HTTP for logs and traces
-    volumes:
-      - ./otelcol-config.yaml:/config.yaml
-    command:
-      - --config=file:/config.yaml
-  # end::otel-collector[]
+      - "8080:8080"
 
-  # tag::loki[]
-  loki:
-    image: grafana/loki:3.5
-
-  grafana:
-    image: grafana/grafana:11.6.1
+  petclinic-portal:
+    profiles: [app]
+    build:
+      context: ../jmix-petclinic-portal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lgtm:
+        condition: service_started
+      petclinic:
+        condition: service_started
+    environment:
+      MAIN_DATASOURCE_URL: jdbc:postgresql://postgres:5432/portal
+      MAIN_DATASOURCE_USERNAME: postgres
+      MAIN_DATASOURCE_PASSWORD: postgres
+      PETCLINIC_BASEURL: http://petclinic:8080
+      PETCLINIC_CLIENTID: petclinic-portal
+      PETCLINIC_CLIENTSECRET: UYfIcnMhoL
+      MANAGEMENT_OPENTELEMETRY_LOGGING_EXPORT_OTLP_ENDPOINT: http://lgtm:4318/v1/logs
+      MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: http://lgtm:4318/v1/traces
+      MANAGEMENT_OTLP_METRICS_EXPORT_URL: http://lgtm:4318/v1/metrics
     ports:
-      - "3000:3000"
-    volumes:
-      - ./grafana-datasources.yaml:/etc/grafana/provisioning/datasources/grafana-datasources.yaml
-    # end::loki[]
+      - "8081:8081"
 
-  # tag::tempo[]
-  tempo:
-    image: grafana/tempo:2.7.1
+  # tag::lgtm[]
+  lgtm:
+    image: grafana/otel-lgtm:0.29.1
     ports:
-      - "3200:3200"
-      - "4417:4417"
-      - "4418:4418"
-      - "9096:9096"
-    volumes:
-      - ./tempo-config.yaml:/config.yaml
-    command:
-      - --config.file=/config.yaml
-    healthcheck:
-      test: [ "CMD-SHELL", "wget -q --spider http://localhost:3200/ready" ]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 5s
-  # end::tempo[]
+      - "3000:3000" # Grafana
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+  # end::lgtm[]
 
 networks:
   default:
-    name: jmix-observability
+    name: jmix-observability-tracing

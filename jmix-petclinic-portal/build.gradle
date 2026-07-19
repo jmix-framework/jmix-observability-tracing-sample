@@ -59,15 +59,15 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-opentelemetry'
     // end::tracing-dependencies[]
 
-    // tag::actuator-logging-deps[]
+    // tag::otel-logback-appender-dependency[]
     // -----------------------------------------------------------
     // LOGGING EXPORT (LOGBACK)
     // -----------------------------------------------------------
     // OpenTelemetry Logback Appender:
     // This appender sends log events (including MDC attributes such as trace_id, span_id, etc.)
     // to the OpenTelemetry Collector.
-    implementation 'io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0:1.32.1-alpha'
-    // end::actuator-logging-deps[]
+    implementation 'io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0:2.28.1-alpha'
+    // end::otel-logback-appender-dependency[]
 
     testImplementation('org.springframework.boot:spring-boot-starter-test') {
         exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'

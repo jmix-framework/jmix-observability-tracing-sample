@@ -10,7 +10,7 @@ import io.jmix.core.metamodel.annotation.InstanceName;
 import io.jmix.core.metamodel.annotation.JmixEntity;
 import io.jmix.core.metamodel.annotation.JmixProperty;
 
-@JmixEntity(name = "petclinic_OwnerBackendRegistration")
+@JmixEntity(name = "petclinic_OwnerRegistration")
 public class OwnerBackendRegistration {
     @JmixId
     private UUID id;

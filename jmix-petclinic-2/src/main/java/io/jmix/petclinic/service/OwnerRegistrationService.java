@@ -31,8 +31,13 @@ public class OwnerRegistrationService {
         }
 
         Owner owner = dataManager.create(Owner.class);
+        owner.setId(ownerRegistration.getId());
         owner.setFirstName(ownerRegistration.getFirstName());
         owner.setLastName(ownerRegistration.getLastName());
-        return owner;
-    };
+        owner.setEmail(ownerRegistration.getEmail());
+        owner.setTelephone(ownerRegistration.getTelephone());
+        owner.setAddress("");
+        owner.setCity("");
+        return dataManager.save(owner);
+    }
 }

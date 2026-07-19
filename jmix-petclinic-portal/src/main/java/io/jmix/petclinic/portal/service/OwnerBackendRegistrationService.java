@@ -6,5 +6,5 @@ import io.jmix.restds.annotation.RemoteService;
 @RemoteService(store = "petclinic", remoteName = "petclinic_OwnerRegistrationService")
 public interface OwnerBackendRegistrationService {
 
-    Owner registerOwner(OwnerBackendRegistration ownerBackendRegistration);
+    Owner registerOwner(OwnerBackendRegistration ownerRegistration);
 }

@@ -4,11 +4,13 @@ import io.jmix.core.entity.annotation.JmixGeneratedValue;
 import io.jmix.core.entity.annotation.JmixId;
 import io.jmix.core.metamodel.annotation.InstanceName;
 import io.jmix.core.metamodel.annotation.JmixEntity;
+import io.jmix.restds.annotation.RestDataStoreEntity;
 
 import java.util.List;
 import java.util.UUID;
 
-@JmixEntity
+@JmixEntity(name = "petclinic_Owner")
+@RestDataStoreEntity(remoteName = "petclinic_Owner")
 public class Owner {
     @JmixGeneratedValue
     @JmixId

@@ -9,8 +9,8 @@ import io.jmix.petclinic.portal.entity.User;
 import io.jmix.petclinic.portal.security.OwnerRole;
 import io.jmix.petclinic.portal.service.OwnerBackendRegistration;
 import io.jmix.petclinic.portal.service.OwnerBackendRegistrationService;
-import io.jmix.security.role.assignment.RoleAssignmentModel;
 import io.jmix.security.role.assignment.RoleAssignmentRoleType;
+import io.jmix.securitydata.entity.RoleAssignmentEntity;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 
@@ -29,12 +29,14 @@ public class UserRegistrationService {
         this.observationRegistry = observationRegistry;
     }
 
+    // tag::custom-observation[]
     @Authenticated
     public User registerUser(UserRegistrationForm userRegistrationForm) {
         return Observation.createNotStarted("registerUser", observationRegistry)
                 .observe(() -> performRegisterUser(userRegistrationForm));
 
     }
+    // end::custom-observation[]
 
     private User performRegisterUser(UserRegistrationForm userRegistrationForm) {
         User user = savePortalUser(userRegistrationForm);
@@ -55,6 +57,7 @@ public class UserRegistrationService {
     private User savePortalUser(UserRegistrationForm userRegistrationForm) {
         User ownerUser = dataManager.create(User.class);
 
+        ownerUser.setOwnerId(ownerUser.getId().toString());
         ownerUser.setFirstName(userRegistrationForm.getFirstName());
         ownerUser.setLastName(userRegistrationForm.getLastName());
         ownerUser.setEmail(userRegistrationForm.getEmail());
@@ -62,7 +65,7 @@ public class UserRegistrationService {
         String encodedPassword = passwordEncoder.encode(userRegistrationForm.getPassword());
         ownerUser.setPassword(encodedPassword);
 
-        RoleAssignmentModel ownerRole = dataManager.create(RoleAssignmentModel.class);
+        RoleAssignmentEntity ownerRole = dataManager.create(RoleAssignmentEntity.class);
         ownerRole.setUsername(ownerUser.getUsername());
         ownerRole.setRoleCode(OwnerRole.CODE);
         ownerRole.setRoleType(RoleAssignmentRoleType.RESOURCE);

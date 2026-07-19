@@ -2,18 +2,22 @@
 
 = Observability: Distributed Tracing
 
-In this guide, you will learn how to implement distributed tracing for your Jmix applications using Micrometer and OpenTelemetry to track requests across multiple services and gain complete visibility into your application's behavior.
+This guide demonstrates how to add distributed tracing to two Jmix applications using Micrometer and OpenTelemetry. We will follow requests from the Petclinic Portal to the Backend, inspect the observations that Jmix creates automatically, and add a custom span for a business operation.
 
 [[requirements]]
 == Requirements
 
-To effectively use this guide, you will need the following:
+If you want to implement this guide step by step, you will need the following:
 
-. xref:ROOT:setup.adoc[Setup] the development environment.
+. xref:ROOT:setup.adoc[Set up Jmix Studio].
 
-. Complete the xref:observability-logging-guide:index.adoc[Centralized Logging Guide] to understand the foundational observability concepts and have the required infrastructure components running.
+. Complete the xref:observability-logging-guide:index.adoc[Centralized Logging Guide] to understand the logging setup and the two Petclinic applications used in this guide.
 
-. Clone the https://github.com/jmix-framework/{sample-project}[sample project^] and switch to `{page-origin-branch}` branch:
+. Get the completed https://github.com/jmix-framework/{sample-project}[sample project^], which includes all the examples used in this guide.
+
+* You can https://github.com/jmix-framework/{sample-project}/archive/refs/heads/{page-origin-branch}.zip[download^] and unzip the source repository.
+
+* Or clone it and switch to the `{page-origin-branch}` branch:
 +
 [source,subs=attributes+]
 ----
@@ -25,150 +29,99 @@ git checkout {page-origin-branch}
 [[what-we-are-going-to-build]]
 == What We are Going to Build
 
-This guide focuses on enhancing the Petclinic Backend and Portal applications from the centralized logging guide with comprehensive distributed tracing capabilities.
+In this guide, we enhance the Petclinic Backend and Portal applications from the centralized logging guide with distributed tracing.
 
-Building upon the existing OpenTelemetry infrastructure, we will demonstrate how to track requests as they flow from the Portal frontend through the Backend to the database, providing complete visibility into distributed request execution.
+First, we will enable the tracing support provided by Jmix and Spring Boot. When a pet owner opens the visit list, the Portal loads the data from the Backend through the REST DataStore. We will inspect how the resulting trace connects UI processing, data loading, the HTTP exchange, and Backend persistence.
+
+Next, we will add a custom observation to user registration. The custom `registerUser` span will group the automatically created persistence and HTTP spans under one business operation.
 
 The final application includes:
 
-* Automatic Instrumentation: Zero-code tracing for HTTP requests, REST DataStore calls that works immediately after configuration
-* Custom Business Tracing: Manual spans for complex operations like owner registration, enriched with meaningful business context
-* Grafana Tempo Integration: Complete trace visualization and analysis alongside existing logs in a unified observability interface
-* Cross-Service Correlation: Track individual requests from Portal frontend through Backend to database with precise timing and error information
+* *Local Observability Stack*: Grafana OpenTelemetry LGTM collects and displays the telemetry.
+* *Automatic Tracing*: Spring Boot and Jmix create spans for HTTP requests, UI processing, and data access.
+* *Cross-Service Propagation*: The trace context travels from the Portal to the Backend.
+* *Log and Trace Correlation*: Application logs link to the corresponding traces in Grafana.
+* *Custom Business Tracing*: A custom span represents the complete user-registration operation.
 
-[[introduction-distributed-tracing]]
-== Introduction to Distributed Tracing
+[[how-distributed-tracing-works]]
+== How Distributed Tracing Works
 
-Before diving into the technical setup, let's look at what distributed tracing is and why it becomes essential when working with multiple applications.
+When a pet owner opens the visit list in the Portal, one user interaction causes work in multiple parts of the system:
 
-In the previous xref:observability-logging-guide:index.adoc[Centralized Logging Guide], we established the foundation for observability by bringing logs from multiple services into a single interface. Centralized logging was our first step toward understanding distributed systems - instead of searching through separate log files on different servers, we could view all logs in Grafana and even correlate them temporally to understand what was happening across services at a specific moment in time.
+. The Portal opens the Jmix view and loads its data.
+. The REST DataStore sends an HTTP request to the Backend.
+. The Backend authenticates the request and loads visits from the database.
+. The response returns to the Portal, which renders the visit cards.
 
-However, as systems grow and handle more concurrent requests, centralized logging alone reaches its limits. While we can see logs from different services in one place and correlate them by timestamp, this temporal correlation becomes increasingly difficult with higher load. When dozens or hundreds of requests are processed simultaneously, determining which log entries belong to the same user request becomes nearly impossible. Furthermore, centralized logging lacks causal correlation - there's no automatic way to understand the cause-and-effect relationships between events across services.
+The centralized logging setup from the previous guide shows messages from both applications in one place. However, timestamps alone do not reliably tell us which Portal and Backend operations belong to the same interaction, especially when many requests run concurrently.
 
-Distributed tracing addresses these limitations by adding a crucial capability: the ability to track a single request as it travels through multiple services, creating a complete picture of how different parts of your system interact to fulfill that request. While centralized logging gives us visibility into what's happening across services, distributed tracing adds the context of *why* and *how* these events are related.
+Distributed tracing connects this work in a _trace_. A trace represents one request or interaction and consists of _spans_. Each span represents an individual operation, records its duration and attributes, and refers to the trace it belongs to. Parent-child relationships between spans show which operation caused the next one.
 
-Consider what happens when a pet owner logs into the Petclinic Portal and views their list of pets. This seemingly simple action actually involves multiple steps across different applications:
+The Petclinic Portal uses Vaadin Flow, which runs the UI logic on the server. Opening a view or interacting with it sends an HTTP request from the browser to the Portal. The browser in this sample is not instrumented for tracing and therefore does not add a `traceparent` header to these requests.
 
-1. The Portal receives the user's request to view pets
-2. Portal makes a REST API call to the Backend using the REST DataStore
-3. Backend processes the request and queries the database
-4. Database returns the pet data
-5. Backend serializes the response back to Portal
-6. Portal renders the pet list for the user
+Spring Boot observes the incoming HTTP request before Vaadin and Jmix process it. Its server instrumentation checks for an incoming trace context. Because the browser request does not contain one, Spring Boot starts a new trace and creates the initial HTTP server span. If a request already contains a trace context, Spring Boot continues that trace instead.
 
-With traditional logging, each application would record its own activities independently. You might see a log entry in the Portal about loading pets, and separately, a log entry in the Backend about processing a pet query. However, there's no automatic way to connect these individual log entries into a single, cohesive story of what happened during that specific user request.
+While the request is processed, this server span is the current tracing context. Jmix does not need to inspect the HTTP headers or create the root trace itself. Its observations for the Vaadin view, fragments, actions, and data loaders become child spans of the active server span. A later Vaadin request without a `traceparent` header starts another trace; the trace context is not stored in the Vaadin session between requests.
 
-Distributed tracing solves this by creating a *trace* - a collection of related *spans* that represent the work done by each service for a single request. Each span contains timing information, operation details, and a unique identifier that links it to other spans in the same trace.
+When the REST DataStore calls the Backend during the same request, it uses a Spring Boot-configured HTTP client. The HTTP client instrumentation creates a client span from the active Portal context and injects that context into the standardized `traceparent` HTTP header defined by https://www.w3.org/TR/trace-context/[W3C Trace Context^]. The header carries identifiers and sampling information, not the collected spans themselves.
 
-Think of it this way: logs are like individual photographs that capture moments in time across different locations, while traces are like a video that shows the complete journey of a request through your system, revealing the connections between those moments.
+Spring Boot's server instrumentation in the Backend extracts this context and continues the trace with new server and application spans. Both applications export their own spans to the OpenTelemetry Collector. Because the spans contain the same trace ID and their parent relationships, Tempo can assemble them into one distributed trace.
 
-By building distributed tracing on top of our centralized logging foundation, we gain several key benefits:
+The shared trace context lets us follow the visit request across service boundaries. It also reveals where time was spent and which operation failed without having to reconstruct the request from timestamps.
 
-* Request Flow Visibility: See exactly how a request moves through your system and where time is spent
-* Performance Analysis: Identify bottlenecks by examining which operations take the longest
-* Error Correlation: When something goes wrong, trace the exact path that led to the error
-* Service Dependencies: Understand how your services interact and depend on each other
-* Causal Relationships: Unlike temporal correlation in centralized logging, traces reveal the actual cause-and-effect chain between events
+Distributed tracing is also useful when the system consists of a single Jmix application. In that case, a trace connects the incoming browser request with the Jmix view lifecycle, UI actions, data loaders, and data-access operations executed during that request. When user-context enrichment is enabled, these spans also contain `jmix.user.username`, which shows which authenticated user initiated the observed operations. Propagating the context to another application extends this same model across a service boundary, but it is not a prerequisite for using tracing.
 
-In distributed systems, this enhanced visibility becomes critical for understanding system behavior, diagnosing issues, and optimizing performance across service boundaries. Distributed tracing complements centralized logging by adding the missing piece: automatic correlation of related events across services, even under high load with many parallel requests.
+Trace data is intended for diagnostics, not as a complete audit history. Sampling and retention policies mean that not every user operation is necessarily available. Use an audit-specific mechanism when operations must be recorded completely and retained for compliance purposes.
 
-[[spring-boot-actuator-and-micrometer]]
-== Spring Boot Actuator and Micrometer Tracing
+[[tracing-in-jmix-applications]]
+== Tracing in Jmix Applications
 
-Before configuring the specific tracing dependencies, it's important to understand the foundation that Jmix and Spring Boot already provide for observability.
+Jmix uses Micrometer's Observation API to instrument framework operations. When the corresponding application properties are enabled, Jmix creates observations for data access as well as Flow UI views, fragments, data loaders, and actions. It can also add the current user and tenant context to these observations.
 
-As described in the xref:observability-logging-guide:index.adoc#spring-boot-actuator[Centralized Logging Guide], Spring Boot Actuator serves as the main way to expose operational data from applications. While Actuator itself is not included by default in Jmix applications, the underlying Micrometer dependencies are already present through Spring Boot.
+Spring Boot contributes observations for incoming and outgoing HTTP requests. This is important for the Petclinic example because the Portal's REST DataStore call and the corresponding Backend request become part of the same trace.
 
-With Spring Boot 3, Micrometer has evolved beyond just metrics collection to provide a comprehensive observability facade that includes:
+The `spring-boot-starter-opentelemetry` dependency connects these Micrometer observations to OpenTelemetry. It:
 
-* Micrometer Observation API: A unified API for instrumenting code once and getting both metrics and traces
-* Micrometer Tracing: A vendor-neutral tracing facade that works with different implementations (OpenTelemetry, Brave/Zipkin, AWS X-Ray)
-
-This means Jmix applications already have the foundation for distributed tracing built in through these Micrometer dependencies. When we add `spring-boot-starter-actuator` and `micrometer-tracing-bridge-otel` in the next sections, we're:
-
-1. Enabling Actuator to expose the observability features
-2. Telling Micrometer to use OpenTelemetry as its tracing implementation
-
-The bridge translates Micrometer's observations into OpenTelemetry spans, providing automatic instrumentation for HTTP requests and other operations without requiring any code changes.
+. Configures the Micrometer observation and tracing infrastructure.
+. Translates observations into OpenTelemetry spans.
+. Exports the spans through the OpenTelemetry Protocol (OTLP).
 
 [NOTE]
 ====
-Because Jmix includes Micrometer through Spring Boot, the foundation for distributed tracing is already present. This makes enabling tracing primarily a matter of adding Actuator and configuring which tracing backend to use.
+Jmix framework code and custom application code use the same `ObservationRegistry`. We begin with observations created automatically by Jmix and Spring Boot. Later, we use the registry to add the `registerUser` observation.
 ====
 
 [[setting-up-distributed-tracing]]
 == Setting Up Distributed Tracing
 
-Now that we understand what distributed tracing provides and the foundation that Jmix already includes, let's enhance our existing observability infrastructure to support trace collection and visualization.
+Now that we understand the tracing foundation, let's configure a local observability backend and connect both applications to it.
 
-We will build upon the OpenTelemetry Collector and Grafana setup from the centralized logging guide, adding Grafana Tempo as our trace storage backend and configuring our applications to export traces.
+[[running-the-grafana-opentelemetry-lgtm-stack]]
+=== Running the Grafana OpenTelemetry LGTM Stack
 
-[[adding-tempo]]
-=== Adding Grafana Tempo
+The xref:observability-logging-guide:index.adoc[Centralized Logging Guide] introduced the https://github.com/grafana/docker-otel-lgtm[Grafana OpenTelemetry LGTM stack^] as the local observability environment. We will continue using this stack for tracing. It packages the OpenTelemetry Collector, Loki, Grafana, Tempo, Prometheus, and Pyroscope into a single Docker image.
 
-https://grafana.com/oss/tempo/[Tempo^] is Grafana's distributed tracing backend that stores and queries traces efficiently. Like Loki for logs, Tempo integrates seamlessly with Grafana for visualization and correlates with other observability data.
+The sample project's Docker Compose configuration contains the same `lgtm` service:
 
-We extend our existing `docker-compose.yaml` from the logging guide to include Tempo:
-
-.docker-compose.yaml - Tempo service
+.docker-compose.yaml - LGTM service
 [source,yaml,indent=0]
 ----
-include::example$/docker/docker-compose.yaml[tags=tempo]
+include::example$/docker/docker-compose.yaml[tags=lgtm]
 ----
 
-Tempo uses a simple configuration that stores traces locally and makes them available for querying through Grafana.
+Port `4318` accepts OTLP over HTTP, port `4317` accepts OTLP over gRPC, and port `3000` exposes Grafana. Loki, Tempo, and Prometheus are already configured as Grafana data sources, so no separate Collector, Tempo, Loki, or Grafana configuration files are needed.
 
-.tempo-config.yaml
-[source,yaml,indent=0]
-----
-include::example$/docker/tempo-config.yaml[]
-----
+If an LGTM container from the logging guide is still running, stop it before starting this Compose project. Both project configurations expose ports `3000`, `4317`, and `4318`.
 
-[[collector-configuration]]
-=== Updating OpenTelemetry Collector
+[NOTE]
+====
+The LGTM image is intended for development, demo, and testing environments. In production, applications typically send telemetry to dedicated managed or self-hosted observability backend services instead of running all components in a single container.
+====
 
-Next, we need to update our OpenTelemetry Collector configuration to receive traces from applications and forward them to Tempo. The collector already handles logs from the previous guide - now we extend it to process traces as well.
-
-.otelcol-config.yaml - Complete configuration with trace support
-[source,yaml,indent=0]
-----
-include::example$/docker/otelcol-config.yaml[tags=receivers-with-traces;processors;exporters-with-traces;service-with-traces]
-----
-
-The key additions for tracing are:
-
-* OTLP receiver on port `4318` for trace data.
-* OTLP exporter that forwards traces to Tempo running on port `3200`.
-* Updated service pipeline that routes traces from receivers through processors to the Tempo exporter.
-
-[[grafana-data-source]]
-=== Configuring Grafana Data Sources
-
-We need to configure Grafana with both Loki and Tempo as data sources, and enable the bidirectional integration between them for seamless navigation between logs and traces.
-
-.grafana-datasources.yaml - Complete configuration with bidirectional log-trace correlation
-[source,yaml,indent=0]
-----
-include::example$/docker/grafana-datasources.yaml[tags=start;loki-with-traces;tempo-with-logs]
-----
-
-This configuration provides:
-
-* Loki with trace correlation: Extracts trace IDs from structured logs using a regex pattern and creates clickable links to view the corresponding trace in Tempo
-* Tempo with log correlation: Enables navigation from traces back to related logs in Loki, filtered by trace ID and service name
-
-The key integration features:
-
-* Derived fields in Loki: The `matcherRegex` pattern `"traceid":"(\w+)"` extracts trace IDs from JSON-formatted logs and creates clickable links
-* Traces to logs in Tempo: Maps the `service.name` from traces to the `job` label in Loki for proper filtering
-* Bidirectional navigation: Users can jump from a log entry to its trace, or from a trace span to all related logs
-
-With this setup, Grafana becomes a unified interface where logs and traces are seamlessly connected, making it easy to investigate issues by moving between different telemetry types.
-
-[[enabling-tracing-backend]]
+[[enabling-tracing-in-petclinic-backend]]
 === Enabling Tracing in Petclinic Backend
 
-Now we configure the Petclinic Backend application to export traces to our OpenTelemetry Collector. This requires adding tracing dependencies and configuring the OTLP exporter.
+Now we configure the Petclinic Backend application to export traces to the OpenTelemetry Collector included in the LGTM container.
 
 First, add the required dependencies to the Backend's `build.gradle`:
 
@@ -178,15 +131,7 @@ First, add the required dependencies to the Backend's `build.gradle`:
 include::example$petclinic/build.gradle[tags=tracing-dependencies]
 ----
 
-These dependencies provide:
-
-* **micrometer-tracing-bridge-otel**: Bridges Spring Boot's Micrometer Tracing API to the OpenTelemetry protocol, enabling automatic instrumentation of HTTP requests and other operations
-* **opentelemetry-exporter-otlp**: Exports trace data using the OTLP protocol to our OpenTelemetry Collector
-
-[NOTE]
-====
-The `spring-boot-starter-actuator` dependency, which includes Micrometer core and observation capabilities, is already present in the dependencies section above the tracing configuration.
-====
+The `spring-boot-starter-opentelemetry` dependency provides the Micrometer Tracing bridge, the OpenTelemetry SDK integration, and OTLP export.
 
 Next, configure the tracing export settings in `application.properties`:
 
@@ -196,18 +141,22 @@ Next, configure the tracing export settings in `application.properties`:
 include::example$petclinic/src/main/resources/application.properties[tags=tracing-config]
 ----
 
-Key configuration elements:
+* Sampling probability: `1.0` records every trace so that all interactions performed in this guide are available for inspection. Spring Boot's default is `0.1`.
+* Jmix observations: `jmix.core.data-observation-enabled` records data operations and `jmix.ui.ui-observation-enabled` records Flow UI operations.
+* OTLP tracing export: `management.opentelemetry.tracing.export.otlp.endpoint` sends completed spans to the LGTM Collector over HTTP.
 
-* **Sampling probability**: Set to `1.0` (100%) for development environments to capture all traces. In production, you might reduce this to `0.1` (10%) to balance visibility with performance
-* **OTLP tracing export**: Enables trace export via HTTP to the OpenTelemetry Collector
+Distributed tracing can produce a large amount of telemetry. Production systems therefore usually use https://opentelemetry.io/docs/concepts/sampling/[sampling^] and retain only a subset of all traces. As a result, the tracing backend normally does not contain a complete history of every request processed by the application.
 
+The `management.tracing.sampling.probability` property controls sampling in the Jmix application. For example, `0.1` records approximately ten percent of traces. Making the decision in the application reduces the amount of data sent over the network and processed by the Collector.
+
+Sampling can also take place in the OpenTelemetry Collector. A Collector can apply one sampling policy centrally or use tail sampling to retain traces based on information from the complete trace, such as errors or high latency. If the Collector should make the sampling decision, the applications must first export the relevant traces. A trace discarded by the application never reaches the Collector and cannot be selected there.
 
 [NOTE]
 ====
-We set the value `management.otlp.tracing.endpoint` is used for local development. In the docker environment we will override this value to point to the HTTP address of the OTEL Collector.
+The `management.opentelemetry.tracing.export.otlp.endpoint` value points to the LGTM container through `localhost` for local development. The Docker environment overrides it with the internal service address.
 ====
 
-[[enabling-tracing-portal]]
+[[enabling-tracing-in-petclinic-portal]]
 === Enabling Tracing in Petclinic Portal
 
 The Portal application requires the same tracing configuration to participate in distributed traces and track requests from the frontend perspective.
@@ -228,7 +177,43 @@ Configure the Portal's tracing export settings in `application.properties`:
 include::example$portal/src/main/resources/application.properties[tags=tracing-config]
 ----
 
-[[docker-environment-configuration]]
+Both applications use the same configuration so that the Portal can propagate the W3C trace context to the Backend and both services can contribute spans to the same trace.
+
+[[keeping-log-and-trace-correlation]]
+=== Keeping Log and Trace Correlation
+
+The `spring-boot-starter-opentelemetry` dependency configures tracing, metrics, and the OpenTelemetry SDK, but it does not capture Logback events. Spring Boot deliberately does not include an OpenTelemetry Logback or Log4j appender.
+
+Keep the OpenTelemetry Logback appender dependency from the logging setup:
+
+.build.gradle - OpenTelemetry Logback appender
+[source,groovy,indent=0]
+----
+include::example$portal/build.gradle[tags=otel-logback-appender-dependency]
+----
+
+The `OpenTelemetry` appender in `logback-spring.xml` converts Logback events into OpenTelemetry log records. It also adds the active trace and span identifiers, which enables navigation from a log record to its trace in Grafana.
+
+.logback-spring.xml
+[source,xml,indent=0]
+----
+include::example$portal/src/main/resources/logback-spring.xml[]
+----
+
+The appender needs the `OpenTelemetry` instance managed by Spring Boot. Install it after the application context has created that instance:
+
+.OpenTelemetryAppenderInitializer.java
+[source,java,indent=0]
+----
+include::example$portal/src/main/java/io/jmix/petclinic/portal/config/OpenTelemetryAppenderInitializer.java[]
+----
+
+[NOTE]
+====
+The Logback appender belongs to the OpenTelemetry Java instrumentation project and currently uses an `-alpha` version. This does not make the OpenTelemetry tracing SDK experimental. Keep the appender version compatible with the OpenTelemetry version managed by the Jmix BOM. The sample uses `2.28.1-alpha` with the OpenTelemetry `1.62.0` API selected by Jmix 3.0.
+====
+
+[[configuring-the-docker-environment]]
 === Configuring the Docker Environment
 
 When running the applications in Docker containers, the tracing endpoints need to be configured to point to the internal Docker network addresses. The `docker-compose.yaml` file includes environment variables that override the local development settings:
@@ -236,47 +221,49 @@ When running the applications in Docker containers, the tracing endpoints need t
 .docker-compose.yaml - Environment variables for tracing
 [source,yaml,indent=0]
 ----
-environment:
-  # ... other environment variables ...
-  # Logging export
-  MANAGEMENT_OTLP_LOGGING_ENDPOINT: http://otel-collector:4318/v1/logs
-  # Tracing export
-  MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+include::example$/docker/docker-compose.yaml[tags=otel-environment]
 ----
 
-These environment variables override the `application.properties` settings when running in Docker, ensuring that the applications can reach the OpenTelemetry Collector using the internal Docker network hostname (`otel-collector`) instead of `localhost`.
+These environment variables override the `application.properties` settings when running in Docker. The applications use the internal Docker hostname `lgtm` instead of `localhost`. The three endpoints send logs, traces, and metrics to the same Collector.
 
-[[verifying-setup]]
+[[verifying-the-tracing-setup]]
 === Verifying the Tracing Setup
 
 With all components configured, let's verify that our distributed tracing setup works correctly.
 
-. Start the complete infrastructure including the new Tempo service:
+. Start PostgreSQL and the LGTM service from the sample project root:
 +
 [source,bash]
 ----
-docker-compose -f docker/docker-compose.yaml up -d
+docker compose -f docker/docker-compose.yaml up -d
 ----
 
-. Start both the Petclinic Backend and Portal applications (either locally or via Docker)
+. Start both the Petclinic Backend and Portal applications from Jmix Studio. Their local configuration sends telemetry to `localhost:4318`.
++
+Alternatively, build both application JAR files and start all services with the Compose `app` profile:
++
+[source,bash]
+----
+docker compose -f docker/docker-compose.yaml --profile app up --build -d
+----
 
 . Open Grafana at http://localhost:3000 (username: `admin`, password: `admin`)
 
-. Navigate to **Configuration > Data sources** and verify that both Loki and Tempo appear as configured data sources
+. Navigate to **Connections > Data sources** and verify that Loki, Tempo, and Prometheus appear as configured data sources.
 
-. In Grafana, go to **Explore** and select **Tempo** from the data source dropdown
+. Go to **Explore** and select **Tempo** from the data source dropdown.
 
-If the setup is working correctly, you should see Tempo available as a data source. The applications will begin sending traces to the Collector, which forwards them to Tempo for storage and querying.
+If the setup works correctly, Tempo appears without any manual data source configuration. The applications send traces to the Collector inside the LGTM container, which forwards them to Tempo for storage and querying.
 
 In the next section, we'll explore how distributed tracing immediately provides valuable insights without any code changes, using a simple visit list viewing scenario.
 
-[[distributed-tracing-in-action]]
-== Distributed Tracing in Action
+[[automatic-tracing-with-jmix]]
+== Automatic Tracing with Jmix
 
-With all the infrastructure and configuration in place, let's see distributed tracing work across our services. We'll use a simple scenario: viewing the list of visits in the Petclinic Portal, which triggers a REST API call to the Backend.
+With all the infrastructure and configuration in place, let's first see what Jmix and Spring Boot trace automatically. We will use a simple scenario: viewing the list of visits in the Petclinic Portal, which triggers a REST API call to the Backend.
 
-[[viewing-visits-portal]]
-=== Viewing Visits in the Portal
+[[loading-the-visit-list]]
+=== Loading the Visit List
 
 When a pet owner logs into the Petclinic Portal and navigates to the visits list, the Portal application needs to fetch the visit data from the Backend through the REST DataStore.
 
@@ -285,47 +272,229 @@ image::portal-visit-list-view.png[Petclinic Portal Visit List View, link="_image
 
 This user action triggers a chain of operations across both services:
 
-1. The Portal receives the request and creates a new trace with a unique ID
-2. The REST DataStore calls the Backend API, including the trace ID in HTTP headers (`traceparent`)
-3. The Backend extracts the trace context from headers and creates child spans for its operations  
-4. Both services export their spans to the OpenTelemetry Collector, which forwards them to Tempo
+. The Portal handles the UI interaction and creates observations for the view and data loading operations.
+. The REST DataStore calls the Backend API and propagates the active trace context in the W3C `traceparent` HTTP header.
+. The Backend extracts the trace context and creates child spans for the incoming request, security filters, and Jmix data access.
+. Both services export their spans to the OpenTelemetry Collector, which forwards them to Tempo.
 
 Without trace propagation through HTTP headers, each service would generate isolated traces with no connection between them.
 
-[[logs-with-trace-context]]
-=== Logs with Trace Context
+[[finding-the-trace-from-application-logs]]
+==== Finding the Trace from Application Logs
 
 In Grafana's Drilldown > Logs view, filter for logs from the `jmix-petclinic-portal` service to see what happens when loading visits:
 
 .Grafana Logs - Portal loading visits
-image::grafana-logs-with-trace-ids.png[Grafana Logs showing Portal loading visits, link="_images/grafana-logs-with-trace-ids.png]
+image::grafana-logs-with-trace-ids.png[Grafana Logs showing Portal loading visits, link="_images/grafana-logs-with-trace-ids.png"]
 
-The first log entry in the Table "Loading visits for owner" now includes the `trace_id` as the unique identifier for the interaction. You can already see that the second log message that comes from the UI Controller contains the same `trace_id` value as it originated from the same UI interaction. This shows, that the trace identifier is used across multiple parts in the application that are triggered by one UI interaction.
+The first log entry, "Loading visits for owner", includes the `trace_id` for the interaction. A second log message from the UI controller contains the same value because both log records were created while the same trace was active.
 
-But how can we now see also logs from multiple services that belong to the same trace? This we will see in the next section.
-
-[[from-logs-to-traces]]
-=== From Logs to Traces
+The OpenTelemetry Logback appender adds the active trace and span identifiers to each exported log record. This is the correlation mechanism that connects logs from different services to one trace.
 
 Clicking the trace link opens the complete distributed trace in Tempo:
 
 .Grafana Tempo - Distributed Trace View
 image::grafana-trace-details.png[Tempo showing the complete distributed trace, link="_images/grafana-trace-details.png"]
 
-The trace view shows the complete request flow across both services. It includes the `jmix-petclinic-portal` as well as the `jmix-petclinic` as the backend.
+The trace view shows the complete request flow across both services. It includes `jmix-petclinic-portal` and the `jmix-petclinic` Backend.
 
-The different entries in the tree structure on the left represent the different spans that are part of the trace. The span with the name `http post` represents the HTTP Client interaction on the portal side. Additional information (span attributes), like the requested URL, the HTTP method etc. are stored there and can be viewed by clicking on the span name.
+The entries in the tree represent the spans in the trace. In the next steps, we will first inspect what happened in the Portal UI and then follow the data access into the Backend.
 
-Additionally, each span displays timing information: its start time relative to trace beginning, duration, and whether operations run sequentially or in parallel. The trace confirms that the Portal's request triggered Backend processing, with both services participating in the same distributed trace.
+[[inspecting-jmix-ui-observations]]
+==== Inspecting Jmix UI Observations
 
-[[understanding-trace-details]]
-=== Understanding the Trace Details
+Expand the Portal part of the trace. Near the beginning of the interaction, select a `view lifecycle` span for the visit list. Its attributes identify the Jmix view through values such as `view.id`, `view.class`, and `lifecycle.name`. These spans are created by Jmix because we enabled `jmix.ui.ui-observation-enabled` in the Portal configuration.
 
-Spring Boot with Micrometer creates spans for all major operations without requiring tracing code in business logic. This includes incoming HTTP requests to both Portal and Backend, outgoing REST API calls from Portal to Backend.
+The visit list renders each result using a `VisitCard` fragment. Its initialization appears as `fragment lifecycle` spans in the same trace. Select one of them to see which fragment class, fragment instance, view, and lifecycle phase Jmix observed.
 
-Each span in the trace provides timing information that helps identify performance bottlenecks. When errors occur, the trace shows exactly where in the request flow they happened. The visual representation makes service dependencies clear, and the timing breakdown separates network latency from actual processing time.
+Continue through the trace and inspect the `data loader lifecycle` spans. They show the `preLoad`, `load`, and `postLoad` phases that Jmix runs while the view obtains its data. At this point, the trace has reached the boundary between UI processing and data access.
+
+.Grafana Tempo - Jmix UI Observation
+image::grafana-jmix-ui-observation.png[Tempo showing a Jmix UI lifecycle span and its attributes, link="_images/grafana-jmix-ui-observation.png"]
+
+To see an action observation, return to the visit list and select **Details** on one of the visit cards. Search Tempo for a recent Portal span named `execute action`. Its `action.id` identifies the card's `detailsAction`, while the view and fragment attributes locate the action in the UI. The subsequent `view lifecycle` spans show Jmix opening the visit detail view.
+
+These spans show the observations contributed by the Jmix UI layer: view and fragment lifecycle phases, data-loader phases, and action execution. Next, we return to the visit-list trace and follow the data loader beyond the UI boundary.
+
+[[following-data-access-through-the-rest-datastore]]
+==== Following Data Access Through the REST DataStore
+
+The data loader asks the Jmix data layer for the visit entities. The corresponding `load list of entities` span includes an `entity.name` attribute and is created because `jmix.core.data-observation-enabled` is enabled.
+
+The Portal does not store the visits locally. Its `DataManager` delegates the load operation to the REST DataStore. Under the `load list of entities` span, follow the Portal's outgoing `http post` span to the Backend's incoming `http post /rest/entities/{entityName}/search` span. Both belong to the same trace because the REST DataStore propagates the active trace context.
+
+In the Backend part of the trace, another `load list of entities` span shows where Jmix loads the visit entities from the Backend database. The trace therefore connects the data operation in the Portal with the corresponding data operation in the Backend.
+
+Select spans from both services and inspect their `jmix.user.username` attribute. The Portal spans contain the logged-in pet owner, while the Backend spans contain the technical user used by the Portal's REST DataStore. Jmix adds this current-user context by default, so the trace shows not only where the request went, but also under which security identity each application processed it.
+
+.Grafana Tempo - Data Access Across Portal and Backend
+image::grafana-data-access-trace.png[Tempo showing the Portal data load, REST DataStore request, and Backend data load, link="_images/grafana-data-access-trace.png"]
+
+[CAUTION]
+====
+User names make this development trace easier to understand, but observation attributes leave the application and are stored in the observability backend. Before enabling tracing in production, review whether user and tenant identifiers, query text, query parameters, or other data attributes are appropriate for your environment. Set `jmix.core.use-user-info-for-observation=false` if user and tenant context must not be exported.
+====
+
+[[inspecting-the-complete-automatic-trace]]
+==== Inspecting the Complete Automatic Trace
+
+The visit trace therefore grows naturally from framework-level observations:
+
+----
+view lifecycle                                  jmix-petclinic-portal
+└── data loader lifecycle                      jmix-petclinic-portal
+    └── load list of entities                  jmix-petclinic-portal
+        └── http post                          jmix-petclinic-portal
+            └── http post /rest/entities/...   jmix-petclinic
+                └── load list of entities      jmix-petclinic
+----
+
+The exact nesting and number of spans can vary as the UI lifecycle and security processing evolve. Use the span names, service names, and attributes to follow the request instead of relying on a fixed tree.
+
+The trace we just followed required no tracing code in the application. Spring Boot with Micrometer created the incoming and outgoing HTTP spans. Jmix contributed the view, fragment, action, data-loader, and entity-loading spans that explain what the applications were doing inside those HTTP operations.
+
+These automatic spans answer technical questions: which view was opened, which data was loaded, which service was called, how long each operation took, and where an error occurred. They also make service dependencies visible and separate network latency from application processing time.
+
+The visit-list trace reveals the complete technical flow without application-specific tracing code. We will now look at a different use case and add business meaning that the framework cannot infer automatically.
+
+[[adding-a-custom-business-span]]
+== Adding a Custom Business Span
+
+The visit-list trace showed the technical detail provided by automatic tracing. We will now trace user registration, which consists of several technical operations that together form one business operation.
+
+[[registering-a-portal-user]]
+=== Registering a Portal User
+
+During registration, we will compare the technical spans created automatically with a custom span that represents the complete business operation.
+
+[[what-automatic-tracing-shows]]
+==== What Automatic Tracing Shows
+
+Registering a Portal user involves:
+
+. Saving the Portal user and assigning the owner role.
+. Calling a custom REST service in the Backend.
+. Creating and saving the corresponding Backend owner.
+
+Jmix and Spring Boot already create spans for the individual persistence and HTTP operations. However, the framework cannot infer that these steps belong to one user-registration operation. What is missing is a parent span that names and measures the complete business operation.
+
+We will call this span `registerUser` and place the existing technical spans underneath it.
+
+[[creating-the-registeruser-observation]]
+==== Creating the `registerUser` Observation
+
+Inject `ObservationRegistry` into `UserRegistrationService` and wrap the complete registration operation in an `Observation`:
+
+.UserRegistrationService.java
+[source,java,indent=0]
+----
+include::example$portal/src/main/java/io/jmix/petclinic/portal/registration/UserRegistrationService.java[tags=custom-observation]
+----
+
+`Observation.createNotStarted()` creates an observation named `registerUser`. Calling `observe()` starts the observation, executes the supplied operation, and stops it in a `finally` block. When tracing is configured, Micrometer turns this observation into an OpenTelemetry span.
+
+The observation surrounds both the Portal persistence operation and the remote Backend call. Their automatically created spans therefore become descendants of the `registerUser` span. If registration throws an exception, `observe()` records it and marks the custom span as failed.
 
 [NOTE]
 ====
-You can enhance traces with custom spans for business-specific operations, covered in the next section.
+Use stable, low-cardinality span names such as `registerUser`. Do not include email addresses, user IDs, or other instance-specific values in a span name.
 ====
+
+[[inspecting-the-extended-trace]]
+==== Inspecting the Extended Trace
+
+To create and inspect the custom span:
+
+. Open the Portal at http://localhost:8081.
+. Select **Register** on the login page and complete the registration form.
+. Open **Explore** in Grafana and select the Tempo data source.
+. Use the query builder to filter by the `jmix-petclinic-portal` service and the `registerUser` span name.
+. Open the matching trace.
+
+The trace contains a hierarchy similar to the following:
+
+----
+registerUser                                      jmix-petclinic-portal
+├── save entities                                jmix-petclinic-portal
+└── http post                                    jmix-petclinic-portal
+    └── http post /rest/services/{serviceName}/{methodName}
+        ├── security and authentication spans    jmix-petclinic
+        └── save entities                        jmix-petclinic
+----
+
+.Grafana Tempo - Registration Trace with Custom Span
+image::grafana-register-user-trace.png[Tempo showing the registerUser span and its child spans in the Portal and Backend, link="_images/grafana-register-user-trace.png"]
+
+The `registerUser` span provides the business boundary. The child spans show where time is spent in the Portal, the network call, Backend security, and Backend persistence. All spans share one trace ID because Spring Boot propagates the trace context with the outbound HTTP request.
+
+The exact number of spans can vary as Jmix and Spring Security instrumentation evolves. Focus on the parent-child relationship and the shared trace ID rather than a fixed span count.
+
+[[custom-span-guidelines]]
+==== Custom Span Guidelines
+
+Add custom observations around meaningful business operations, not around every method. Automatic instrumentation already covers the technical details.
+
+Use the following guidelines:
+
+* Create a custom span when it gives a group of technical spans a useful business name.
+* Keep span names stable and low-cardinality.
+* Put the observation around the complete operation whose duration and outcome matter.
+* Let exceptions propagate through `observe()` so Micrometer can record the error.
+* Avoid personal or sensitive data in span names and attributes.
+
+[[troubleshooting]]
+== Troubleshooting
+
+[[no-traces-in-tempo]]
+=== No Traces in Tempo
+
+Check the following:
+
+* Both applications include `spring-boot-starter-opentelemetry`.
+* `management.opentelemetry.tracing.export.otlp.endpoint` points to `localhost:4318/v1/traces` for locally running applications or `lgtm:4318/v1/traces` inside Docker.
+* `management.tracing.sampling.probability` is greater than `0`.
+* The LGTM container is running and port `4318` is available.
+
+[[portal-and-backend-appear-as-separate-traces]]
+=== Portal and Backend Appear as Separate Traces
+
+Separate traces indicate that the HTTP client did not propagate the current trace context. Spring Boot instruments clients created from its auto-configured builders. The Jmix REST DataStore used by this sample participates in that instrumentation and sends the W3C `traceparent` header automatically.
+
+For custom HTTP integrations, use an auto-configured `RestClient.Builder`, `RestTemplateBuilder`, or `WebClient.Builder` instead of constructing the client directly.
+
+[[traces-exist-but-logs-are-not-correlated]]
+=== Traces Exist but Logs are not Correlated
+
+The OpenTelemetry starter does not include a logging appender. Verify that:
+
+* The OpenTelemetry Logback appender dependency is present.
+* `logback-spring.xml` references `OpenTelemetryAppender`.
+* `OpenTelemetryAppender.install(openTelemetry)` runs during application startup.
+* `management.opentelemetry.logging.export.otlp.endpoint` points to the Collector's `/v1/logs` endpoint.
+
+An outdated appender version can also cause class loading errors when its OpenTelemetry API version does not match the version managed by Jmix. Use the version from the sample project.
+
+[[summary]]
+== Summary
+
+Jmix 3 uses Micrometer observations for framework operations such as data access and Flow UI lifecycle events. Spring Boot 4's `spring-boot-starter-opentelemetry` connects those observations to OpenTelemetry and exports spans using OTLP.
+
+In this guide, we:
+
+* Started the Grafana OpenTelemetry LGTM stack as a compact local observability backend.
+* Enabled automatic tracing in the Petclinic Backend and Portal.
+* Propagated one trace context across a Jmix REST DataStore call.
+* Correlated Logback records with their active trace and span.
+* Added the `registerUser` custom observation as a business-level span.
+* Inspected automatic and custom spans from both services in Grafana Tempo.
+
+The resulting trace connects a user interaction in the Portal with the HTTP exchange, Backend security, and persistence operations. This makes the complete request path visible without coupling the applications to a specific tracing backend.
+
+[[further-information]]
+== Further Information
+
+* xref:features:observability.adoc[Observability in Jmix]
+* https://docs.spring.io/spring-boot/4.0/reference/actuator/tracing.html[Spring Boot Tracing^]
+* https://docs.spring.io/spring-boot/4.0/reference/actuator/loggers.html#actuator.loggers.opentelemetry[Spring Boot OpenTelemetry Logging^]
+* https://docs.micrometer.io/micrometer/reference/observation.html[Micrometer Observation^]
+* https://github.com/grafana/docker-otel-lgtm[Grafana OpenTelemetry LGTM Stack^]

@@ -321,7 +321,7 @@ These built-in Jmix tracing observations cover view and fragment lifecycle phase
 
 The data loader asks the Jmix data layer for the visit entities. The corresponding `load list of entities` span includes an `entity.name` attribute and is created because `jmix.core.data-observation-enabled` is enabled.
 
-The Portal does not store the visits locally. Its `DataManager` delegates the load operation to the REST DataStore. The Portal's outgoing `http post` span below `load list of entities` is connected to the Backend's incoming `http post /rest/entities/{entityName}/search` span. Both belong to the same trace because the REST DataStore propagates the active trace context.
+The Portal does not store the visits locally. Its `DataManager` delegates the load operation to the REST DataStore. The Portal's outgoing `http post` span below `load list of entities` is connected to the Backend's incoming `http post /rest/entities/\{entityName}/search` span. Both belong to the same trace because the REST DataStore propagates the active trace context.
 
 In the Backend part of the trace, another `load list of entities` span shows where Jmix loads the visit entities from the Backend database. The trace therefore connects the data operation in the Portal with the corresponding data operation in the Backend.
 

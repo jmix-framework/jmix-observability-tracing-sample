@@ -186,9 +186,9 @@ Durations are shown as average and maximum values. The maximum is the longest si
 [[finding-a-slow-view]]
 == Finding a Slow View
 
-The following steps use the dashboard to find out where the visit list spends its time. The figures show the Portal dashboard after twenty minutes of work: two browser sessions repeatedly opened the pet and visit lists and their detail views.
+The following steps use the dashboard to find out where the visit list spends its time. The numbers below come from the Portal dashboard after twenty minutes of work: two browser sessions repeatedly opened the pet and visit lists and their detail views.
 
-. In the *Views* section of the overview figure above, *View open max time* shows `Visit.list` with 1.54 s in the first minutes after the application start, while *View open average time* shows about 40 ms for this view. The maximum is the longest single opening in the last few minutes, so one slow opening stays on the maximum graph for several minutes, while the average hardly changes.
+. In the *Views* section of the dashboard, *View open max time* shows `Visit.list` with 1.54 s in the first minutes after the application start, while *View open average time* shows about 40 ms for this view. The maximum is the longest single opening in the last few minutes, so one slow opening stays on the maximum graph for several minutes, while the average hardly changes.
 . Select `Visit.list` in the *View* filter at the top of the dashboard. The *Views* and *Data loaders* sections now show only this view.
 . *View stage max time* shows that the 1.54 s were spent in the `beforeShow` stage; the other stages took a few milliseconds. In Jmix, the data loaders of a view are triggered in the `beforeShow` stage by default.
 +

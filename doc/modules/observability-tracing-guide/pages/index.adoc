@@ -76,7 +76,7 @@ Trace data is intended for diagnostics, not as a complete audit history. Samplin
 [[tracing-in-jmix-applications]]
 == Tracing in Jmix Applications
 
-The xref:features:observability.adoc#tracing[Jmix tracing support] uses Micrometer's Observation API to instrument framework operations. When the corresponding application properties are enabled, Jmix creates observations for data access as well as Flow UI views, fragments, data loaders, and actions. It can also add the current user and tenant context to these observations.
+The xref:features:observability/tracing.adoc[Jmix tracing support] uses Micrometer's Observation API to instrument framework operations. When the corresponding application properties are enabled, Jmix creates observations for data access as well as Flow UI views, fragments, data loaders, and actions. It can also add the current user and tenant context to these observations.
 
 Spring Boot contributes observations for incoming and outgoing HTTP requests. This is important for the Petclinic example because the Portal's REST DataStore call and the corresponding Backend request become part of the same trace.
 
@@ -489,5 +489,6 @@ The custom `registerUser` observation added a business-level boundary around use
 * https://docs.spring.io/spring-boot/4.0/reference/actuator/tracing.html[Spring Boot Tracing^]
 * https://docs.spring.io/spring-boot/4.0/reference/actuator/loggers.html#actuator.loggers.opentelemetry[Spring Boot OpenTelemetry Logging^]
 * https://docs.micrometer.io/micrometer/reference/observation.html[Micrometer Observation^]
-* xref:features:observability.adoc#tracing[Jmix Observability: Tracing]
+* xref:features:observability/tracing.adoc[Tracing]: Jmix spans and their attributes, the share of sampled traces, context propagation between services
+* xref:observability-monitoring-guide:index.adoc[Monitoring Guide]
 * https://github.com/grafana/docker-otel-lgtm[Grafana OpenTelemetry LGTM Stack^]

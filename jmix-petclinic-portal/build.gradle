@@ -59,6 +59,14 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-opentelemetry'
     // end::tracing-dependencies[]
 
+    // tag::metrics-dependencies[]
+    // -----------------------------------------------------------
+    // METRICS
+    // -----------------------------------------------------------
+    // Exposes metrics in the Prometheus format at /actuator/prometheus.
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+    // end::metrics-dependencies[]
+
     // tag::otel-logback-appender-dependency[]
     // -----------------------------------------------------------
     // LOGGING EXPORT (LOGBACK)

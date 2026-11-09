@@ -1,0 +1,16 @@
+# Scrapes /actuator/prometheus of both applications.
+# The first target of each job is the application running in Docker (Compose 'app' profile),
+# the second one is the application started on the host, for example from Jmix Studio.
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: petclinic
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['petclinic:8080', 'host.docker.internal:8080']
+
+  - job_name: petclinic-portal
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['petclinic-portal:8081', 'host.docker.internal:8081']

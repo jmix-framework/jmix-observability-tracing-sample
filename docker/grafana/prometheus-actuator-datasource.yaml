@@ -1,0 +1,12 @@
+# Grafana data source for the Prometheus service that scrapes /actuator/prometheus.
+# The data source named Prometheus inside the LGTM container stores the metrics received over OTLP.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus Actuator
+    type: prometheus
+    uid: prometheus-actuator
+    url: http://prometheus:9090
+    editable: true
+    jsonData:
+      timeInterval: 15s

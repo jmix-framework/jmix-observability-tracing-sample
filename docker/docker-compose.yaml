@@ -68,7 +68,22 @@ services:
       - "3000:3000" # Grafana
       - "4317:4317" # OTLP gRPC
       - "4318:4318" # OTLP HTTP
-  # end::lgtm[]
+    # end::lgtm[]
+    # tag::lgtm-prometheus-datasource[]
+    volumes:
+      - ./grafana/prometheus-actuator-datasource.yaml:/otel-lgtm/grafana/conf/provisioning/datasources/prometheus-actuator.yaml:ro
+    # end::lgtm-prometheus-datasource[]
+
+  # tag::prometheus[]
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "9090:9090"
+  # end::prometheus[]
 
 networks:
   default:
